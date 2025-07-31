@@ -3,11 +3,11 @@
 # For MacOS you need to find one, for Windows the provided one is a default
 
 $macOSPath = "~/<PATH TO EVE LOGS DIRECTORY>"
-$windowsPath = $HOME + "\Documents\EVE\logs\"
+$windowsPath = $HOME + "\Documents\EVE\logs\"  # This is default location - if changed, you need to modify this line
 
 # Define the directory path
 if ($IsMacOS) { $logDir = $macOSPath }
-elseif ($ENV:OS = "Windows_NT") { $IsWindows = "True" ; $logDir = $windowsPath }
+elseif ($ENV:OS = "Windows_NT") { $IsItWindows = "True" ; $logDir = $windowsPath }
 else {exit}
 
 $logsPath = @()
@@ -25,13 +25,13 @@ foreach ($directoryPath in $logsPath) {
 
     # Define the zip file name
     if ($IsMacOS) { $logTypes = $($directoryPath -match '\/([^\/]+)\/?$' | Out-Null; $matches[1]) }
-    elseif ($IsWindows) { $logTypes = $directoryPath -replace '.*\\([^/]+)\\?$', '$1'}
+    elseif ($IsItWindows) { $logTypes = $directoryPath -replace '.*\\([^/]+)\\?$', '$1'}
 
     Write-Host "Archiving $($oldFiles.Count) files in $logTypes"
     # Update the zip file with older .txt files
     if ($oldFiles.Count -gt 0) {
-        cd $directoryPath
-        if ($IsWindows) {
+        Set-Location $directoryPath
+        if ($IsItWindows) {
             Compress-Archive -Path $oldFiles.FullName -Update -DestinationPath "$($logTypes) - $year.zip"
         } else {
             # macOS does not have Compress-Archive cmdlet; using zip command instead
@@ -42,4 +42,31 @@ foreach ($directoryPath in $logsPath) {
     # Remove the older .txt files from the system
     $oldFiles | Remove-Item -Force -ErrorAction SilentlyContinue
 }
+
+$riftProcess = Get-Process -name "RIFT Intel Fusion Tool" -ErrorAction SilentlyContinue
+$riftSqlFilesLoc = $HOME + "\AppData\Local\Packages\" +
+                   (Get-ChildItem $HOME"\AppData\Local\Packages" -Filter "*RIFTIntelFusionTool*" -Directory).Name +
+                   "\LocalCache\Local\Temp"
+$riftSqlFiles = Get-ChildItem $riftSqlFilesLoc -File -Filter "sqlite-jdbc-tmp-*"
+$riftSqlFilesCount = $riftSqlFiles.Count
+$riftFilesDeletionCounter = 0
+
+if ($riftProcess) {
+    $riftStartTime = $riftProcess.StartTime
+    $riftSqlFiles | ForEach-Object {
+        Write-Progress -Status "Removing RIFT files" -PercentComplete $($riftFilesDeletionCounter / $riftSqlFilesCount) -Activity "RIFT files removal"
+        if ($_.CreationTime -lt $riftStartTime) {
+            Remove-item $_.FullName
+        }
+    }
+}
+else {
+    $riftSqlFiles | ForEach-Object {
+        Write-Progress -Status "Removing RIFT files" -PercentComplete $($riftFilesDeletionCounter / $riftSqlFilesCount) -Activity "RIFT files removal"
+        Remove-item $_.FullName
+        $riftFilesDeletionCounter++
+    }
+}
+Write-Host "Cleared $($riftFilesDeletionCounter) old RIFT database files."
 Read-Host -Prompt "Press enter to close"
+
